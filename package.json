@@ -1,0 +1,17 @@
+{
+  "name": "raft",
+  "module": "./src/main.ts",
+  "type": "module",
+  "devDependencies": {
+    "bun-types": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@trpc/client": "next",
+    "@trpc/server": "next",
+    "@types/node": "^20.11.17",
+    "express": "^4.18.2"
+  }
+}
