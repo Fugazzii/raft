@@ -11,66 +11,99 @@ enum NodeState {
     Leader
 }
 
+const hostname = "localhost";
+
 export class Node {
 
-    private _port!: number;
     private _currentState: NodeState;
 
     private rpcServer!: JsonRpcServer;
-    private rpcClient!: JsonRpcClient;
-    private readonly _nodeAddresses: Array<string>;
-    private readonly _ledger: EventStore<MessageEvent>;
 
-    public constructor() {
-        this._nodeAddresses = [];
-        this._ledger = new EventStore();
+    public constructor(
+        private readonly _port: number,
+        private readonly _ledger: EventStore<MessageEvent> = new EventStore(),
+        private readonly _rpcClients: JsonRpcClient[] = []
+    ) {
         this._currentState = NodeState.Follower;
+        console.log(chalk.green(`Starting node on ${_port}`));
+        this.listen(_port);
     }
 
-    public start(port: number) {
-        console.log(chalk.green(`Starting node on ${port}`));
-        this._port = port;
+    public join(port: number) {
+        const newNode = new Node(port, this._ledger, this._rpcClients);
+        
+        this._handleAddNode(port);
+        this._rpcClients.map(async c => {
+            await c.notify("add_node", [port]);
+        });
+        return newNode;
+    }
+
+    public listen(port: number) {
         const hostOptions = { 
             hostname: "localhost",
             port
         };
+        
         this.rpcServer = JsonRpcServer.run({
             transport: TcpServer.run(hostOptions)
         });
-        this.rpcClient = JsonRpcClient.connect({
-            transport: TcpClient.connect(hostOptions)
-        });
+
+        this._registerMethods();
     }
 
     public kill() {
         console.log(chalk.red(`Killing node on ${this._port}`));
-        this.rpcClient.close();
         this.rpcServer.close();
     }
 
-    public publish(message: MessageEvent) {}
+    public async publish(message: MessageEvent) {
+        this._rpcClients.map(async c => {
+            await c.notify("add_event", [message])
+        });
+    }
 
-    public displayLedger(message: string, limit = 0, offset = 0) {
-        const result = this._ledger.findMany({ limit, offset });
+    public displayLedger(message: string) {
+        const result = this._ledger.findMany({});
         console.log(chalk.blue(`${message}:`), result);
     }
 
-    public becomeLeader() {
-        this._currentState = NodeState.Leader;
-        console.log(chalk.yellow("Becoming Leader"));
+    private _registerMethods() {
+        this.rpcServer.addMethod("add_event", (messageEvent: MessageEvent) => {
+            this._ledger.add(messageEvent);
+            return null;
+        });
+        
+        this.rpcServer.addMethod("add_node", this._handleAddNode.bind(this));
     }
 
-    public becomeFollower() {
-        this._currentState = NodeState.Follower;
-        console.log(chalk.yellow("Becoming Follower"));
+    private _handleAddNode(port: number) {
+        const client = JsonRpcClient.connect({
+            transport: TcpClient.connect({ hostname, port })
+        });
+        this._rpcClients.push(client);
     }
 
-    public becomeCandidate() {
-        this._currentState = NodeState.Candidate;
-        console.log(chalk.yellow("Becoming Candidate"));
-    }
-
-    public sendHeartbeats() {
-
+    public get port() {
+        return this._port;
     }
 }
+
+
+
+// public becomeLeader() {
+//     this._currentState = NodeState.Leader;
+//     console.log(chalk.yellow("Becoming Leader"));
+// }
+
+// public becomeFollower() {
+//     this._currentState = NodeState.Follower;
+//     console.log(chalk.yellow("Becoming Follower"));
+// }
+
+// public becomeCandidate() {
+//     this._currentState = NodeState.Candidate;
+//     console.log(chalk.yellow("Becoming Candidate"));
+// }
+
+// public sendHeartbeats() {}

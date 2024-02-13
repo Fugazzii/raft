@@ -28,7 +28,7 @@ export class EventStore<Event extends IEvent> {
     
         const startIndex = this.eventsCount - offset;
         const endIndex = startIndex - limit;
-    
+
         return this._events.slice(endIndex, startIndex);
     }
 
