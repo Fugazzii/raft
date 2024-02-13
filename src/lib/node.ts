@@ -63,9 +63,8 @@ export class Node {
         });
     }
 
-    public displayLedger(message: string) {
-        const result = this._ledger.findMany({});
-        console.log(chalk.blue(`${message}:`), result);
+    public getLedger() {
+        return this._ledger.findMany({});
     }
 
     private _registerMethods() {
