@@ -34,7 +34,8 @@ export class Node {
     }
 
     public join(port: number) {
-        const newNode = new Node(port, this._ledger, this._rpcClients);
+        const copy = JSON.parse(JSON.stringify(this._rpcClients))
+        const newNode = new Node(port, this._ledger, copy);
         
         this._handleAddNode(port);
         this._rpcClients.map(async c => {

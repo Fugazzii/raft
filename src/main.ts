@@ -15,14 +15,29 @@ const app = express();
 app.use(express.json());
 
 app.get("/ping", (_, res) => res.end("<h1>🚀 Pong!</h1>"));
+
+app.get("/events", (req, res) => {
+    const randHash = (Math.floor(Math.random() * 100)) % cluster.length;
+    const { ledger } = cluster[randHash];
+
+    res.status(200).json({
+        message: "Fetched all events",
+        data: ledger
+    })
+    .destroy();
+});
+
 app.post("/event", async (req, res) => {
     const { message } = req.body;
     const messageEvent = MessageEvent.new(message);
     const randHash = message.length % cluster.length;
     await cluster[randHash].publish(messageEvent);
-    res.status(201)
-        .json({ message: "Successfully published message" })
-        .destroy();
+    
+    res.status(201).json({ 
+        message: "Successfully published message",
+        data: null
+    })
+    .destroy();
 })
 
 app.listen(8000, () => console.log(`🚀 Server is running on 8000`));

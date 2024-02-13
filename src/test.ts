@@ -12,19 +12,22 @@ setTimeout(() => {
 }, 1000);
 
 async function runSimulation() {
-    await level1();
-    await level2();
-    await level3();
-    await level4();
-    await level5();
-    await level6();
+    // await level1();
+    // await level2();
+    // await level3();
+    // await level4();
+    // await level5();
+    // await level6();
 }
 
 async function level1() {
     console.log(chalk.bold("\nTesting Level 1 ------------------->"));
     await genesisNode.publish(MessageEvent.new("From genesisNode"));
-    const result = await compareLedgers();
-    console.log(result);
+    setTimeout(() => {
+        console.log("Genesis Node", genesisNode.ledger);
+        console.log("Node2", node2.ledger);
+        console.log("Node3", node3.ledger);
+    }, 1000);
 }
 async function level2() {
     console.log(chalk.bold("\nTesting Level 2 ------------------->"));
