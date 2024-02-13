@@ -25,8 +25,12 @@ export class Node {
         private readonly _rpcClients: JsonRpcClient[] = []
     ) {
         this._currentState = NodeState.Follower;
-        console.log(chalk.green(`Starting node on ${_port}`));
-        this.listen(_port);
+
+        this.rpcServer = JsonRpcServer.run({
+            transport: TcpServer.run({ hostname, port: _port })
+        });
+
+        this._registerMethods();
     }
 
     public join(port: number) {
@@ -39,17 +43,10 @@ export class Node {
         return newNode;
     }
 
-    public listen(port: number) {
-        const hostOptions = { 
-            hostname: "localhost",
-            port
-        };
-        
-        this.rpcServer = JsonRpcServer.run({
-            transport: TcpServer.run(hostOptions)
+    public async publish(message: MessageEvent) {
+        this._rpcClients.map(async c => {
+            await c.notify("add_event", [message])
         });
-
-        this._registerMethods();
     }
 
     public kill() {
@@ -57,25 +54,15 @@ export class Node {
         this.rpcServer.close();
     }
 
-    public async publish(message: MessageEvent) {
-        this._rpcClients.map(async c => {
-            await c.notify("add_event", [message])
-        });
-    }
-
-    public getLedger() {
-        return this._ledger.findMany({});
-    }
-
     private _registerMethods() {
-        this.rpcServer.addMethod("add_event", (messageEvent: MessageEvent) => {
-            this._ledger.add(messageEvent);
-            return null;
-        });
-        
+        this.rpcServer.addMethod("add_event", this._handleAddEvent.bind(this));
         this.rpcServer.addMethod("add_node", this._handleAddNode.bind(this));
     }
 
+    private _handleAddEvent(messageEvent: MessageEvent) {
+        this._ledger.add(messageEvent);
+        return null;
+    }
     private _handleAddNode(port: number) {
         const client = JsonRpcClient.connect({
             transport: TcpClient.connect({ hostname, port })
@@ -83,6 +70,9 @@ export class Node {
         this._rpcClients.push(client);
     }
 
+    public get ledger() {
+        return this._ledger.findMany({});
+    }
     public get port() {
         return this._port;
     }

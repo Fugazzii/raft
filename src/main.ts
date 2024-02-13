@@ -69,12 +69,12 @@ async function compareLedgers() {
     return new Promise((resolve, reject) => {
         setTimeout(() => { 
             const test1 = deepEquals(
-                genesisNode.getLedger(),
-                node2.getLedger()
+                genesisNode.ledger,
+                node2.ledger
             );
             const test2 = deepEquals(
-                genesisNode.getLedger(),
-                node3.getLedger()
+                genesisNode.ledger,
+                node3.ledger
             );
             if(test1 && test2) {
                 resolve(true);
