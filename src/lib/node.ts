@@ -11,6 +11,17 @@ enum NodeState {
     Leader
 }
 
+type MessageData = {
+    addr: Address;
+    message: Message;
+};
+
+type DownloadData = {
+    ledger: Message[];
+    clients: string[];
+    leaderAddr: Address | null;
+};
+
 export class Node {
     private rpcServer!: JsonRpcServer;
     private _currentState: NodeState;
@@ -31,21 +42,27 @@ export class Node {
     }
 
     public async requestAddingNewNode(addr: Address) {
-        this._handleNewNode(addr);
         await this._broadcast("add_node", [addr]);
+        
+        const data = {
+            ledger: this._ledger.findMany({}),
+            clients: [...this.clients, this.address],
+            leaderAddr: this._leaderAddr    
+        };
+
+        const rpcClient = this._handleNewNode(addr);
+        this._rpcClients.set(addr, rpcClient);
+
+        const res = await this._rpcClients.get(addr)?.call("request_data", [data]);
         return {
             ok: true,
-            data: {
-                ledger: this._ledger.findMany({}),
-                clients: Array.from(this._rpcClients.keys()),
-                leaderAddr: this._leaderAddr    
-            }
+            data: res?.result 
         };
     }
 
-    public requestPublishingEvent(message: Message) {
-        this._ledger.add(message);
-        return this._broadcast("add_event", [message]);
+    public async requestPublishingEvent({ addr, message }: MessageData) {
+        await this._handleNewEvent(addr, message);
+        return this._broadcast("add_event", [addr, message]);
     }
 
     public kill() {
@@ -56,28 +73,38 @@ export class Node {
     private _registerMethods() {
         this.rpcServer.addMethod("add_event", this._handleNewEvent.bind(this));
         this.rpcServer.addMethod("add_node", this._handleNewNode.bind(this));
-        this.rpcServer.addMethod("request_data", this._handleRequestData.bind(this));
+        this.rpcServer.addMethod("request_data", this._handleRequestData.bind(this))
     }
 
     /**
      *  HANDLERS 
      */
 
-    private _handleRequestData(data: any) {
-        this._ledger = data.ledger;
-        this._rpcClients = data.clients;
+    private _handleRequestData(data: DownloadData) {
+        this._ledger = new EventStore(data.ledger);
+        data.clients.forEach(_ => {
+            const [hostname, port] = _.split(":");
+            const addr = { 
+                hostname,
+                port: +port
+            };
+            this._rpcClients.set(addr, this._handleNewNode(addr));
+        });
         this._leaderAddr = data.leaderAddr;
     }
-
-    private _handleNewEvent(messageEvent: Message) {
-        this._ledger.add(messageEvent);
-        console.log(this.port, "Ledger", this.ledger);
+    private async _handleNewEvent(addr: Address, messageEvent: Message) {
+        if(!this._rpcClients.get(addr)) {
+            throw new Error("Recieved request from unknown node");
+        }
+        await this._ledger.add(messageEvent);
     }
+
     private _handleNewNode(addr: Address) {
         const client = JsonRpcClient.connect({
             transport: TcpClient.connect(addr)
         });
         this._rpcClients.set(addr, client);
+        return client;
     }
 
     private _broadcast(eventType: string, params: unknown[] = []) {
@@ -98,5 +125,11 @@ export class Node {
     }
     public get host() {
         return this._address.hostname;
+    }
+    public get address() {
+        return `${this.host}:${this.port}`;
+    }
+    public get clients() {
+        return Array.from(this._rpcClients.keys());
     }
 }
