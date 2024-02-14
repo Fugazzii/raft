@@ -15,10 +15,7 @@ const ENDPOINT = "http://localhost:8000/add_node";
 const RPC_PORT = +Bun.argv[2];
 const HTTP_PORT = RPC_PORT + 5000;
 
-const node = new Node({
-    port: RPC_PORT,
-    hostname: "localhost"
-});
+const node = new Node(`localhost:${RPC_PORT}`);
 
 const app = express();
 
@@ -31,13 +28,10 @@ app.get("/ping", (_, res) => res.end("<h1>🚀 Pong!</h1>"));
 */
 app.post("/add_node", async (req, res) => {
     try {
-        const { port, hostname } = req.body;
-        const { ok, data } = await node.requestAddingNewNode({
-            port,
-            hostname
-        });
+        const { url } = req.body;
+        const { ok, data } = await node.requestAddingNewNode(url);
 
-        console.log(ok, data);
+        console.log(ok ? "ok" : "not ok");
 
         res.status(200).json({
             message: `Added node ${req.body.port} in network`,
@@ -63,8 +57,7 @@ app.post("/join", async (req, res) => {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                port: req.body.port,
-                hostname: req.body.hostname
+                url: req.body.url
             })
         });
     
@@ -103,19 +96,23 @@ app.get("/clients", (req, res) => {
  * Publish event
  */
 app.post("/event", async (req, res) => {
-    const { message } = req.body;
-    await node.requestPublishingEvent({ 
-        addr: {
-            hostname: "localhost",
-            port: RPC_PORT
-        }, 
-        message
-    });
-
-    res.status(201).json({
-        message: "Published message",
-        ledger: node.ledger
-    });
+    try {
+        const { message } = req.body;
+        await node.requestPublishingEvent({ 
+            address: "localhost:3000",
+            message
+        });
+    
+        res.status(201).json({
+            message: "Published message",
+            ledger: node.ledger
+        });            
+    } catch (error) {
+        res.status(500).json({
+            message: "Failed to publish event",
+            error
+        });
+    }
 });
 
 app.listen(HTTP_PORT, () => console.log(`🚀 Http Server is running on ${HTTP_PORT}`));

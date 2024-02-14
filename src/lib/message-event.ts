@@ -4,8 +4,11 @@ export class Message {
 
     private readonly _id: string;
     private readonly _timestamp: number;
-    
-    private constructor(private readonly _message: string) {
+
+    private constructor(
+        private readonly _message: string,
+        private readonly _author: string
+    ) {
         this._id = randomUUID();
         this._timestamp = Date.now();
     }
@@ -22,7 +25,11 @@ export class Message {
         return this._message;
     }
 
-    public static new(_message: string) {
-        return new Message(_message);
+    public get author() {
+        return this._author;
+    }
+
+    public static new(_message: string, _author: string) {
+        return new Message(_message, _author);
     }
 }
