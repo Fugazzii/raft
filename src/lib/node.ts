@@ -1,6 +1,6 @@
 import { JsonRpcClient } from "../../json-rpc/lib/rpc-client";
 import { JsonRpcServer } from "../../json-rpc/lib/rpc-server";
-import { TcpClient, TcpServer } from "../../json-rpc/lib/transport";
+import { TcpServer, TcpClient, Address } from "../../json-rpc/lib/transport";
 import { EventStore } from "./event-store";
 import { Message } from "./message-event";
 import chalk from 'chalk';
@@ -29,7 +29,7 @@ export class Node {
     public constructor(
         private readonly _address: string,
         private _ledger = new EventStore(),
-        private _rpcClients = new Map<string, JsonRpcClient>(),
+        private _addressToClients = new Map<string, JsonRpcClient>(),
         private _leaderAddr: string | null = null
     ) {
         this.rpcServer = JsonRpcServer.listen({
@@ -51,9 +51,9 @@ export class Node {
         };
 
         const rpcClient = this._handleNewNode(addr);
-        this._rpcClients.set(addr, rpcClient);
+        this._addressToClients.set(addr, rpcClient);
 
-        const res = await this._rpcClients.get(addr)?.call("request_data", data);
+        const res = await this._addressToClients.get(addr)?.call("request_data", data);
         return {
             ok: true,
             data: res?.result 
@@ -89,7 +89,7 @@ export class Node {
     private _handleRequestData(data: DownloadData) {
         this._ledger = new EventStore(data.ledger);
         data.clients.forEach(address => {
-            this._rpcClients.set(
+            this._addressToClients.set(
                 address,
                 this._handleNewNode(address)
             );
@@ -101,26 +101,26 @@ export class Node {
         const client = JsonRpcClient.connect({
             transport: new TcpClient(this._parseAddress(addr))
         });
-        this._rpcClients.set(addr, client);
+        this._addressToClients.set(addr, client);
         return client;
     }
 
     private async _handleNewEvent(address: string, messageEvent: Message) {
         const { port, host } = this._parseAddress(address);
 
-        if(!this._rpcClients.get(address) && `${host}:${port}` !== this.address) {
+        if(!this._addressToClients.get(address) && `${host}:${port}` !== this.address) {
             throw new Error("Recieved request from unknown node");
         }
         await this._ledger.add(messageEvent);
     }
 
     private _broadcast(eventType: string, ...params: any) {
-        const promises = Array.from(this._rpcClients.values())
+        const promises = Array.from(this._addressToClients.values())
             .map(c => c.call(eventType, ...params));
         return Promise.all(promises);
     }
 
-    private _parseAddress(addr: string) {
+    private _parseAddress(addr: string): Address {
         const [host, port] = addr.split(":");
         return { host, port: +port };
     }
@@ -136,6 +136,6 @@ export class Node {
         return this._address;
     }
     public get clients() {
-        return Array.from(this._rpcClients.keys());
+        return Array.from(this._addressToClients.keys());
     }
 }

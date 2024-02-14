@@ -17,7 +17,7 @@ export class EventStore {
 
     public copy() {
         const copiedMsgs = this._events.map(ev => {
-            return Message.new(ev.message);
+            return Message.new(ev.message, ev.author);
         });
         return new EventStore(copiedMsgs);
     }
