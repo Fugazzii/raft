@@ -1,14 +1,11 @@
 import express from "express";
 import { Node } from "./lib/node";
-import { MessageEvent } from "./lib/message-event";
-import chalk from "chalk";
-import { getRandomSeed } from "bun:jsc";
+import { Message } from "./lib/message-event";
 
-const node1 = new Node(3000);
-const node2 = node1.join(3001);
-const node3 = node2.join(3002);
+const RPC_PORT = +Bun.argv[2];
+const HTTP_PORT = RPC_PORT + 5000;
 
-const cluster = [node1, node2, node3];
+const genesisNode = new Node(RPC_PORT);
 
 const app = express();
 
@@ -16,28 +13,31 @@ app.use(express.json());
 
 app.get("/ping", (_, res) => res.end("<h1>🚀 Pong!</h1>"));
 
-app.get("/events", (req, res) => {
-    const randHash = (Math.floor(Math.random() * 100)) % cluster.length;
-    const { ledger } = cluster[randHash];
+app.post("/node", async (req, res) => {
+    const newNodePort = req.body.port;
+    const newNode = await genesisNode.addNode(newNodePort);
 
     res.status(200).json({
-        message: "Fetched all events",
-        data: ledger
+        message: `Added node ${newNodePort} in network`,
+        ledger: newNode.ledger
+    });
+});
+
+app.get("/events", (req, res) => {
+    res.status(200).json({
+        data: genesisNode.ledger
     })
-    .destroy();
 });
 
 app.post("/event", async (req, res) => {
     const { message } = req.body;
-    const messageEvent = MessageEvent.new(message);
-    const randHash = message.length % cluster.length;
-    await cluster[randHash].publish(messageEvent);
-    
-    res.status(201).json({ 
-        message: "Successfully published message",
-        data: null
-    })
-    .destroy();
-})
+    await genesisNode.addEvent(message);
 
-app.listen(8000, () => console.log(`🚀 Server is running on 8000`));
+    res.status(201).json({
+        message: "Published message",
+        ledger: genesisNode.ledger
+    });
+});
+
+
+app.listen(HTTP_PORT, () => console.log(`🚀 Http Server is running on ${HTTP_PORT}`));

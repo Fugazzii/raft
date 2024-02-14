@@ -1,29 +1,43 @@
-export interface IEvent {
-    get id(): string | number | symbol;
-}
+import { FileSink, deepEquals } from "bun";
+import { Message } from "./message-event";
 
 type FindManyOptions = {
     limit?: number;
     offset?: number;
 };
 
-export class EventStore<Event extends IEvent> {
-    private readonly _events: Array<Event>;
+export class EventStore {
+    private readonly _writer!: FileSink;
 
-    public constructor() {
-        this._events = [];
+    public constructor(
+        private readonly _events: Array<Message> = []
+    ) {
+        // this._writer = Bun.file(`logs/${Date.now()}.json`).writer();
     }
 
-    public add(event: Event): void {
-        this._events.push(event);
+    public copy() {
+        const copiedMsgs = this._events.map(ev => {
+            return Message.new(ev.message);
+        });
+        return new EventStore(copiedMsgs);
     }
 
-    public find(event: IEvent): Event | null {
+    public async add(event: Message): Promise<void> {
+        try {
+            // this._writer.write(JSON.stringify(event));
+            // await this._writer.flush();   
+            this._events.push(event);
+        } catch (error) {
+            throw error;            
+        }
+    }
+
+    public find(event: Message): Message | null {
         const found = this._events.find(ev => ev.id === event.id);
         return found ? found : null;
     }
 
-    public findMany(findManyOptions: FindManyOptions): Event[] {
+    public findMany(findManyOptions: FindManyOptions): Message[] {
         const { offset = 0, limit = this.eventsCount } = findManyOptions;
     
         const startIndex = this.eventsCount - offset;

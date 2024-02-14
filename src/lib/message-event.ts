@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { IEvent } from "./event-store";
 
-export class MessageEvent implements IEvent {
+export class Message {
 
     private readonly _id: string;
     private readonly _timestamp: number;
@@ -24,6 +23,6 @@ export class MessageEvent implements IEvent {
     }
 
     public static new(_message: string) {
-        return new MessageEvent(_message);
+        return new Message(_message);
     }
 }

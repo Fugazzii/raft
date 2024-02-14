@@ -1,8 +1,9 @@
+import { deepEquals } from "bun";
 import { JsonRpcClient } from "../../json-rpc/lib/rpc-client";
 import { JsonRpcServer } from "../../json-rpc/lib/rpc-server";
 import { TcpClient, TcpServer } from "../../json-rpc/lib/transport";
 import { EventStore } from "./event-store";
-import { MessageEvent } from "./message-event";
+import { Message } from "./message-event";
 import chalk from 'chalk';
 
 enum NodeState {
@@ -14,40 +15,37 @@ enum NodeState {
 const hostname = "localhost";
 
 export class Node {
-
-    private _currentState: NodeState;
-
     private rpcServer!: JsonRpcServer;
+    private _currentState: NodeState;
 
     public constructor(
         private readonly _port: number,
-        private readonly _ledger: EventStore<MessageEvent> = new EventStore(),
-        private readonly _rpcClients: JsonRpcClient[] = []
+        private readonly _ledger = new EventStore(),
+        private readonly _rpcClients: JsonRpcClient[] = [],
+        private _leaderIndex = 0
     ) {
-        this._currentState = NodeState.Follower;
-
         this.rpcServer = JsonRpcServer.run({
             transport: TcpServer.run({ hostname, port: _port })
         });
 
         this._registerMethods();
+        
+        this._currentState = NodeState.Follower;
     }
 
-    public join(port: number) {
-        const copy = JSON.parse(JSON.stringify(this._rpcClients))
-        const newNode = new Node(port, this._ledger, copy);
+    public async addNode(port: number) {
+        const copyClients = [...this._rpcClients];
+        const newNode = new Node(port, this._ledger, copyClients);
         
         this._handleAddNode(port);
-        this._rpcClients.map(async c => {
-            await c.notify("add_node", [port]);
-        });
+        await this._broadcast("add_node", [port]);
+
         return newNode;
     }
 
-    public async publish(message: MessageEvent) {
-        this._rpcClients.map(async c => {
-            await c.notify("add_event", [message])
-        });
+    public addEvent(message: Message) {
+        this._ledger.add(message);
+        return this._broadcast("add_event", [message]);
     }
 
     public kill() {
@@ -60,7 +58,7 @@ export class Node {
         this.rpcServer.addMethod("add_node", this._handleAddNode.bind(this));
     }
 
-    private _handleAddEvent(messageEvent: MessageEvent) {
+    private _handleAddEvent(messageEvent: Message) {
         this._ledger.add(messageEvent);
         return null;
     }
@@ -71,6 +69,13 @@ export class Node {
         this._rpcClients.push(client);
     }
 
+    private _broadcast(eventType: string, params: unknown[] = []) {
+        const promises = this._rpcClients.map(c => {
+            return c.call(eventType, params);
+        });
+        return Promise.all(promises);        
+    }
+
     public get ledger() {
         return this._ledger.findMany({});
     }
@@ -78,22 +83,3 @@ export class Node {
         return this._port;
     }
 }
-
-
-
-// public becomeLeader() {
-//     this._currentState = NodeState.Leader;
-//     console.log(chalk.yellow("Becoming Leader"));
-// }
-
-// public becomeFollower() {
-//     this._currentState = NodeState.Follower;
-//     console.log(chalk.yellow("Becoming Follower"));
-// }
-
-// public becomeCandidate() {
-//     this._currentState = NodeState.Candidate;
-//     console.log(chalk.yellow("Becoming Candidate"));
-// }
-
-// public sendHeartbeats() {}
