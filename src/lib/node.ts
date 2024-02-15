@@ -1,6 +1,6 @@
 import { JsonRpcClient } from "../../json-rpc/lib/client";
 import { JsonRpcServer } from "../../json-rpc/lib/server";
-import { TcpServer, TcpClient, Address } from "../../json-rpc/lib/transport";
+import { TcpServer, TcpClient, Address, JsonRpcResponse } from "../../json-rpc/lib/transport";
 import { EventStore } from "./event-store";
 import { Message } from "./message-event";
 import chalk from 'chalk';
@@ -29,95 +29,95 @@ export class Node {
     public constructor(
         private readonly _address: string,
         private _ledger = new EventStore(),
-        private _addressToClients = new Map<string, JsonRpcClient>(),
+        private _nodeAddressList = new Array<string>,
         private _leaderAddr: string | null = null
     ) {
         this.rpcServer = JsonRpcServer.listen({
             transport: new TcpServer(this._parseAddress(_address))
         });
 
-        this._registerMethods();
-        
         this._currentState = NodeState.Follower;
+        this._registerMethods();
     }
 
-    public async requestAddingNewNode(addr: string) {
-        await this._broadcast("add_node", addr);       
+    public async requestAddingNewNode(addr: string): Promise<void> {
+        await this._broadcast("add_node", [addr]);
         
         const data = {
             ledger: this._ledger.findMany({}),
-            clients: [...this.clients, this.address],
+            clients: [...this._nodeAddressList, this.address],
             leaderAddr: this._leaderAddr    
         };
 
-        const rpcClient = this._handleNewNode(addr);
-        this._addressToClients.set(addr, rpcClient);
+        this._nodeAddressList.push(addr);
 
-        const res = await this._addressToClients.get(addr)?.call("request_data", data);
-        return {
-            ok: true,
-            data: res?.result 
-        };
+        const rpcClient = this._establishConnection(addr);
+        rpcClient.notify("request_data", [data]);
     }
 
-    public async requestPublishingEvent({ address, message }: MessageData) {
+    public async requestPublishingEvent(
+        { address, message }: MessageData
+    ): Promise<JsonRpcResponse[]> {
         try {
-            await this._handleNewEvent(address, message);
-            return this._broadcast("add_event", address, message);
+            await this._saveNewEvent(address, message);
+            return this._broadcast("add_event", [address, message]);
         } catch (error) {
-            console.error("Error in _handleNewEvent:", error);
+            console.error("Error in _saveNewEvent:", error);
             throw error;
         }
     }
     
 
-    public kill() {
+    public kill(): void {
         console.log(chalk.red(`Killing node on ${this.address}`));
         this.rpcServer.close();
     }
 
-    private _registerMethods() {
-        this.rpcServer.expose("add_event", this._handleNewEvent.bind(this));
-        this.rpcServer.expose("add_node", this._handleNewNode.bind(this));
-        this.rpcServer.expose("request_data", this._handleRequestData.bind(this));
+    private _registerMethods(): void {
+        this.rpcServer.expose("add_event", this._saveNewEvent.bind(this));
+        this.rpcServer.expose("add_node", this._saveNewNode.bind(this));
+        this.rpcServer.expose("request_data", this._downloadRequestedData.bind(this));
     }
 
     /**
      *  HANDLERS 
      */
 
-    private _handleRequestData(data: DownloadData) {
+    private _downloadRequestedData(data: DownloadData): void {
         this._ledger = new EventStore(data.ledger);
-        data.clients.forEach(address => {
-            this._addressToClients.set(
-                address,
-                this._handleNewNode(address)
-            );
-        });
         this._leaderAddr = data.leaderAddr;
+        data.clients.forEach(address => this._nodeAddressList.push(address));
     }
 
-    private _handleNewNode(addr: string) {
-        const client = JsonRpcClient.connect({
-            transport: new TcpClient(this._parseAddress(addr))
-        });
-        this._addressToClients.set(addr, client);
-        return client;
+    private _saveNewNode(addr: string): void {
+        this._nodeAddressList.push(addr);
     }
 
-    private async _handleNewEvent(address: string, messageEvent: Message) {
-        const { port, host } = this._parseAddress(address);
+    private _saveNewEvent(address: string, messageEvent: Message): Promise<void> {
+        console.log("Me", this._address);
+        console.log("Recieved", address);
+        console.log("list: ", this.addresses);
+        const addressBookContains = this._nodeAddressList.includes(address);
+        const notSameAddress = address !== this.address;
 
-        if(!this._addressToClients.get(address) && `${host}:${port}` !== this.address) {
+        if(!addressBookContains && notSameAddress) {
             throw new Error("Recieved request from unknown node");
         }
-        await this._ledger.add(messageEvent);
+        return this._ledger.add(messageEvent);
     }
 
-    private _broadcast(eventType: string, ...params: any) {
-        const promises = Array.from(this._addressToClients.values())
-            .map(c => c.call(eventType, ...params));
+    private _broadcast(eventType: string, params?: any[]): Promise<JsonRpcResponse[]> {
+        const promises = this._nodeAddressList.map(addr => {
+            const client = this._establishConnection(addr);
+            return client.call(eventType, params);
+        });
         return Promise.all(promises);
+    }
+
+    private _establishConnection(addr: string): JsonRpcClient {
+        return JsonRpcClient.connect({
+            transport: new TcpClient(this._parseAddress(addr))
+        });
     }
 
     private _parseAddress(addr: string): Address {
@@ -129,13 +129,13 @@ export class Node {
      * GETTERS
      */
 
-    public get ledger() {
+    public get ledger(): Message[] {
         return this._ledger.findMany({});
     }
-    public get address() {
+    public get address(): string {
         return this._address;
     }
-    public get clients() {
-        return Array.from(this._addressToClients.keys());
+    public get addresses(): string[] {
+        return this._nodeAddressList;
     }
 }

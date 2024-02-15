@@ -29,13 +29,11 @@ app.get("/ping", (_, res) => res.end("<h1>🚀 Pong!</h1>"));
 app.post("/add_node", async (req, res) => {
     try {
         const { url } = req.body;
-        const { ok, data } = await node.requestAddingNewNode(url);
-
-        console.log(ok ? "ok" : "not ok");
+        await node.requestAddingNewNode(url);
 
         res.status(200).json({
             message: `Added node ${req.body.port} in network`,
-            data
+            data: null
         });
     } catch(error) {
         res.status(500).json({
@@ -78,17 +76,17 @@ app.post("/join", async (req, res) => {
 /**
  * Fetch all events
  */
-app.get("/events", (req, res) => {
+app.get("/events", (_, res) => {
     res.status(200).json({
         message: "All events",
         data: node.ledger
     });
 });
 
-app.get("/clients", (req, res) => {
+app.get("/clients", (_, res) => {
     res.status(200).json({
         message: "All clients",
-        data: node.clients
+        data: node.addresses
     });
 })
 
