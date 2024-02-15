@@ -1,5 +1,5 @@
-import { JsonRpcClient } from "../../json-rpc/lib/rpc-client";
-import { JsonRpcServer } from "../../json-rpc/lib/rpc-server";
+import { JsonRpcClient } from "../../json-rpc/lib/client";
+import { JsonRpcServer } from "../../json-rpc/lib/server";
 import { TcpServer, TcpClient, Address } from "../../json-rpc/lib/transport";
 import { EventStore } from "./event-store";
 import { Message } from "./message-event";
