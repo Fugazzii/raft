@@ -23,6 +23,7 @@
     - Check if node already exists
     - Broadcast new node address to network
 - **add_event** - Publish event
+- **request_data**
 
 ### Queries
 - **get_ledger** - Get events
