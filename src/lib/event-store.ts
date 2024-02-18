@@ -6,15 +6,17 @@ type FindManyOptions = {
     offset?: number;
 };
 
-type BufferLike = string | ArrayBufferView | ArrayBuffer | SharedArrayBuffer;
-
 export class EventStore {
     private readonly _fs: BunFile;
+    private readonly _writer: FileSink;
+    private _filename: string;
     private _lastHash: string | null;
     private _eventsCache: Array<Message>;
 
     public constructor(_address: string) {
-        this._fs = Bun.file(`logs/${_address}.csv`);
+        this._filename = `logs/${_address}.csv`;
+        this._fs = Bun.file(this._filename);
+        this._writer = this._fs.writer();
         this._eventsCache = [];
         this._lastHash = null;
     }
@@ -23,14 +25,14 @@ export class EventStore {
         this._eventsCache = [];
         this._lastHash = event.id;
         const buf = this._serialize(event);
-        return this._writeAndFlush(buf);
+        return this._appendAndFlush(buf);
     }
 
     public async insertMany(events: Message[]) {
         this._eventsCache = [];
         this._lastHash = events.at(-1)?.id as string;
         const buf = events.map(this._serialize).join();
-        return this._writeAndFlush(buf);
+        return this._appendAndFlush(buf);
     }
 
     public async find(event: Message): Promise<Message | null> {
@@ -64,10 +66,18 @@ export class EventStore {
         return result;
     }
 
-    public findMany(findManyOptions: FindManyOptions): Message[] {
-        const { offset = 0, limit = this.ledgerHeight } = findManyOptions;
-    
-        const startIndex = this.ledgerHeight - offset;
+    public async findMany(findManyOptions: FindManyOptions): Promise<Message[]> {
+        const h = await this.ledgerHeight();
+        
+        if(this._eventsCache.length !== h) {
+            const txt = await this._fs.text();
+            const nonParsed = txt.split("\n").filter(obj => !!obj);
+            this._eventsCache = nonParsed.map(this._deserialize);
+        }
+        
+        const { offset = 0, limit = h } = findManyOptions;
+
+        const startIndex = h - offset;
         const endIndex = startIndex - limit;
 
         return this._eventsCache.slice(endIndex, startIndex);
@@ -76,8 +86,8 @@ export class EventStore {
     public update(newLedger: Message[]) {
         if(!this._lastHash) {
             this._eventsCache = newLedger;
-
         }
+
         let lastHashIndex = -1;
         for (let i = 0; i < newLedger.length; i++) {
             if(newLedger[i].id === this._lastHash) {
@@ -90,12 +100,11 @@ export class EventStore {
         this.insertMany(newLedger);
     }
 
-    private _writeAndFlush(buf: BufferLike): Promise<number> {
+    private _appendAndFlush(buf: string): Promise<number> {
         return new Promise((resolve, reject) => {
             try {
-                const writer: FileSink = this._fs.writer();
-                writer.write(buf);
-                resolve(writer.flush());                        
+                this._writer.write(buf);
+                resolve(this._writer.flush());
             } catch (error) {
                 console.error("Failed to write and flush to disk");
                 reject(error);
@@ -103,16 +112,27 @@ export class EventStore {
         });
     }
 
-    private _serialize(event: Message): Buffer {
+    private _serialize(event: Message): string {
         try {
-            return Buffer.from(JSON.stringify(event) + "\n");
+            return JSON.stringify(event) + "\n";
         } catch (error) {
             console.error("Failed to serialize");
             throw error;
         }
     }
 
-    public get ledgerHeight() {
-        return this._eventsCache.length;
+    private _deserialize(str: string): Message {
+        try {
+            return JSON.parse(str);
+        } catch (error) {
+            console.error("Failed to deserialize");
+            throw error;
+        }
+    }
+
+    public async ledgerHeight() {
+        const content = await this._fs.text();
+        const lines = content.split(/\r?\n/);
+        return lines.length;
     }
 }

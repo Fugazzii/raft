@@ -11,11 +11,6 @@ enum NodeState {
     Leader
 }
 
-type MessageData = {
-    address: string;
-    message: Message;
-};
-
 type DownloadData = {
     downloadingFromAddress: string;
     clients: string[];
@@ -53,23 +48,22 @@ export class Node {
         };
 
         const rpcClient = this._establishConnection(newNodeAddr);
+        const ledger = await this.getledger();
         rpcClient.notify("request_data", [data]);
+        rpcClient.notify("request_ledger", [ledger]);
         this._nodeAddressList.push(newNodeAddr);
     }
 
-    public async requestPublishingEvent(
-        { address, message }: MessageData
-    ): Promise<JsonRpcResponse[]> {
+    public async requestPublishingEvent(messageData: Message): Promise<JsonRpcResponse[]> {
         try {
-            await this._saveNewEvent(address, message);
-            return this._broadcast("add_event", [address, message]);
+            await this._saveNewEvent(messageData);
+            return this._broadcast("add_event", [messageData]);
         } catch (error) {
             console.error("Error in _saveNewEvent:", error);
             throw error;
         }
     }
     
-
     private _registerMethods(): void {
         this.rpcServer.expose("add_event", this._saveNewEvent.bind(this));
         this.rpcServer.expose("add_node", this._saveNewNode.bind(this));
@@ -82,25 +76,20 @@ export class Node {
      */
 
     private _downloadRequestedData(recievedData: DownloadData): void {
-        recievedData.clients.forEach(address => this._nodeAddressList.push(address));
+        recievedData.clients.forEach(this._saveNewNode);
         this._nodeAddressList.push(recievedData.downloadingFromAddress);
         this._leaderAddr = recievedData.leaderAddr;
     }
 
-    private _requestLedger(data: Message[]): void {}
+    private _requestLedger(data: Message[]): void {
+        this._ledger.update(data);
+    }
 
     private _saveNewNode(newNodeAddr: string): void {
         this._nodeAddressList.push(newNodeAddr);
     }
 
-    private _saveNewEvent(eventAuthorAddress: string, messageEvent: Message): Promise<number> {
-        const addressBookContains = this._nodeAddressList.includes(eventAuthorAddress);
-        const notSameAddress = eventAuthorAddress !== this.address;
-
-        if(!addressBookContains && notSameAddress) {
-            throw new Error("Recieved request from unknown node");
-        }
-
+    private _saveNewEvent(messageEvent: Message): Promise<number> {
         return this._ledger.add(messageEvent);
     }
 
@@ -128,7 +117,7 @@ export class Node {
     }
 
     public kill(): void {
-        console.log(chalk.red(`Killing node on ${this.address}`));
+        console.error(chalk.red(`Killing node on ${this.address}`));
         this.rpcServer.close();
     }
 
@@ -136,7 +125,7 @@ export class Node {
      * GETTERS
      */
 
-    public get ledger(): Message[] {
+    public getledger(): Promise<Message[]> {
         return this._ledger.findMany({});
     }
     public get address(): string {

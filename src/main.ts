@@ -1,5 +1,6 @@
 import express from "express";
 import { Node } from "./lib/node";
+import { Message } from "./lib/message-event";
 
 /**
  * This is variable for simulating friend's endpoint,
@@ -76,10 +77,10 @@ app.post("/join", async (req, res) => {
 /**
  * Fetch all events
  */
-app.get("/events", (_, res) => {
+app.get("/events", async (_, res) => {
     res.status(200).json({
         message: "All events",
-        data: node.ledger
+        data: await node.getledger()
     });
 });
 
@@ -96,14 +97,11 @@ app.get("/clients", (_, res) => {
 app.post("/event", async (req, res) => {
     try {
         const { message } = req.body;
-        await node.requestPublishingEvent({ 
-            address: "localhost:3000",
-            message
-        });
+        await node.requestPublishingEvent(Message.new(message, "localhost:3000"));
     
         res.status(201).json({
             message: "Published message",
-            ledger: node.ledger
+            ledger: await node.getledger()
         });            
     } catch (error) {
         res.status(500).json({
