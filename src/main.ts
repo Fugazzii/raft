@@ -32,7 +32,7 @@ app.post("/add_node", async (req, res) => {
         await node.requestAddingNewNode(url);
 
         res.status(200).json({
-            message: `Added node ${req.body.port} in network`,
+            message: `Added node ${url} in network`,
             data: null
         });
     } catch(error) {
