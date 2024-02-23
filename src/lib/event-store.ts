@@ -31,7 +31,7 @@ export class EventStore {
     public async insertMany(events: Message[]) {
         this._eventsCache = [];
         this._lastHash = events.at(-1)?.id as string;
-        const buf = events.map(this._serialize).join();
+        const buf = events.map(this._serialize).join("\n");
         return this._appendAndFlush(buf);
     }
 
@@ -83,20 +83,18 @@ export class EventStore {
         return this._eventsCache.slice(endIndex, startIndex);
     }
 
-    public update(newLedger: Message[]) {
-        if(!this._lastHash) {
-            this._eventsCache = newLedger;
+    public async update(newLedger: Message[]) {
+        if(this._lastHash) {
+            let lastHashIndex = -1;
+            for (let i = 0; i < newLedger.length; i++) {
+                if(newLedger[i].id === this._lastHash) {
+                    lastHashIndex = i;
+                    break;
+                }
+            }    
+            newLedger.splice(lastHashIndex);
         }
-
-        let lastHashIndex = -1;
-        for (let i = 0; i < newLedger.length; i++) {
-            if(newLedger[i].id === this._lastHash) {
-                lastHashIndex = i;
-                break;
-            }
-        }
-
-        newLedger.splice(lastHashIndex);
+        console.log("Inserting ", newLedger);   
         this.insertMany(newLedger);
     }
 

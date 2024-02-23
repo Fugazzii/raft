@@ -54,10 +54,10 @@ export class Node {
         this._nodeAddressList.push(newNodeAddr);
     }
 
-    public async requestPublishingEvent(messageData: Message): Promise<JsonRpcResponse[]> {
+    public async requestPublishingEvent(messageData: Message): Promise<void> {
         try {
             await this._saveNewEvent(messageData);
-            return this._broadcast("add_event", [messageData]);
+            await this._notifyAll("add_event", [messageData]);
         } catch (error) {
             console.error("Error in _saveNewEvent:", error);
             throw error;
@@ -85,7 +85,7 @@ export class Node {
         this._ledger.update(data);
     }
 
-    private _saveNewNode(newNodeAddr: string): void {
+    private _saveNewNode = (newNodeAddr: string): void => {
         this._nodeAddressList.push(newNodeAddr);
     }
 
@@ -103,6 +103,14 @@ export class Node {
             return client.call(eventType, params);
         });
         return Promise.all(promises);
+    }
+
+    private _notifyAll(eventType: string, params?: any[]): Promise<void[]> {
+        const promises = this._nodeAddressList.map(addr => {
+            const client = this._establishConnection(addr);
+            client.notify(eventType, params);
+        });
+        return Promise.all(promises);        
     }
 
     private _establishConnection(addr: string): JsonRpcClient {
